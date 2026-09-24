@@ -122,6 +122,29 @@ class QRInfoTest {
     }
 
     @Test
+    fun zigzag_covers_codewords_plus_remainder_bits() {
+        // ISO/IEC 18004 remainder bits: modules left after an integer number of codewords.
+        val remainder = intArrayOf(
+            0,
+            7, 7, 7, 7, 7,
+            0, 0, 0, 0, 0, 0, 0,
+            3, 3, 3, 3, 3, 3, 3,
+            4, 4, 4, 4, 4, 4, 4,
+            3, 3, 3, 3, 3, 3, 3,
+            0, 0, 0, 0, 0, 0
+        )
+        for (version in 1..40) {
+            for (ecc in ErrorCorrection.entries) {
+                val cap = QRInfo.capacity(version, ecc)
+                val template = QRInfo.drawTemplate(version, ecc, 0)
+                var bits = 0
+                QRInfo.zigzag(template, 0) { _, _, _ -> bits++ }
+                assertEquals(cap.total * 8 + remainder[version - 1], bits, "version=$version ecc=$ecc")
+            }
+        }
+    }
+
+    @Test
     fun drawTemplate_size() {
         val template = QRInfo.drawTemplate(1, ErrorCorrection.MEDIUM, 0)
         assertEquals(21, template.width)
