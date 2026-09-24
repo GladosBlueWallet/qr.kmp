@@ -223,14 +223,14 @@ class Bitmap private constructor(
     }
 
     /**
-     * Negate all pixels in the bitmap (invert black/white).
-     * Useful for detecting inverted QR codes.
-     * null values remain null.
+     * Invert dark and light. Unset cells count as light, matching [get] and [toImage],
+     * so a binarized frame (dark = true, light = unset) can be retried as a
+     * reversed-color QR code. A second call restores which cells read as dark.
      */
     fun negate(): Bitmap {
         for (y in 0 until height) {
             for (x in 0 until width) {
-                data[y][x] = data[y][x]?.not()
+                data[y][x] = data[y][x] != true
             }
         }
         return this

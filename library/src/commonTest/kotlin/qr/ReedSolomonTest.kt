@@ -24,6 +24,22 @@ class ReedSolomonTest {
     }
 
     @Test
+    fun decode_corrects_up_to_half_the_ecc_symbols() {
+        val eccWords = 7 // version 1-L corrects 3 errors
+        val rs = ReedSolomon(eccWords)
+        val data = ByteArray(19) { (it * 17 + 3).toByte() }
+        val ecc = rs.encode(data)
+        val codeword = ByteArray(data.size + ecc.size)
+        data.copyInto(codeword)
+        ecc.copyInto(codeword, data.size)
+        val positions = intArrayOf(0, 8, data.size + 1)
+        for (pos in positions) {
+            codeword[pos] = (codeword[pos].toInt() xor 0xFF).toByte()
+        }
+        assertContentEquals(data, rs.decode(codeword).copyOf(data.size))
+    }
+
+    @Test
     fun decode_handles_valid_codeword() {
         val rs = ReedSolomon(4)
         val data = byteArrayOf(0x10, 0x20, 0x30)

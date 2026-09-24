@@ -155,12 +155,6 @@ object BitDecoder {
     }
 
     /**
-     * Convert a byte to a binary string with specified padding.
-     */
-    private fun bin(value: Int, pad: Int): String =
-        value.toString(2).padStart(pad, '0')
-
-    /**
      * Decode the bitmap and extract the encoded text.
      */
     fun decodeBitmap(b: Bitmap): String {
@@ -194,106 +188,93 @@ object BitDecoder {
             throw QRDecodingException("decode: pos=$pos, total=${capacity.total}")
         }
 
-        // De-interleave and error correct
-        val interleave = Interleave(version, ecc)
-        val decoded = interleave.decode(bytes)
+        return decodeCodewords(Interleave(version, ecc).decode(bytes), version)
+    }
 
-        // Convert to bit string
-        var bits = decoded.joinToString("") { bin(it.toInt() and 0xFF, 8) }
+    /**
+     * Read QR segments from error-corrected data codewords.
+     * [version] selects the character-count width.
+     */
+    internal fun decodeCodewords(data: ByteArray, version: Int): String {
+        var bitIndex = 0
+        val bitLength = data.size * 8
 
-        // Parse segments
-        val result = StringBuilder()
-        var eci = 26 // Default to UTF-8 for compatibility with old behavior
-
-        fun readBits(n: Int): String {
-            if (n > bits.length) throw QRDecodingException("Not enough bits")
-            val value = bits.substring(0, n)
-            bits = bits.substring(n)
+        fun read(n: Int): Int {
+            if (bitIndex + n > bitLength) throw QRDecodingException("Not enough bits")
+            var value = 0
+            repeat(n) {
+                val byte = data[bitIndex ushr 3].toInt() and 0xFF
+                val bit = (byte ushr (7 - (bitIndex and 7))) and 1
+                value = (value shl 1) or bit
+                bitIndex++
+            }
             return value
         }
 
-        fun toNum(s: String): Int = s.toInt(2)
+        val result = StringBuilder()
+        var eci = 26 // QR encoders emit UTF-8 byte mode without an ECI header.
 
-        val modes = mapOf(
-            "0000" to "terminator",
-            "0001" to "numeric",
-            "0010" to "alphanumeric",
-            "0100" to "byte",
-            "0111" to "eci",
-            "1000" to "kanji"
-        )
-
-        while (true) {
-            if (bits.length < 4) break
-            val modeBits = readBits(4)
-            val mode = modes[modeBits]
-                ?: throw QRDecodingException("Unknown modeBits=$modeBits result=\"$result\"")
-
-            if (mode == "terminator") break
-
-            // Handle ECI mode (Extended Channel Interpretation)
-            if (mode == "eci") {
-                val first = toNum(readBits(8))
-                eci = when {
-                    (first and 0x80) == 0 -> first
-                    (first and 0xc0) == 0x80 -> ((first and 0x3f) shl 8) or toNum(readBits(8))
-                    else -> ((first and 0x1f) shl 16) or toNum(readBits(16))
-                }
-                continue // ECI doesn't carry data, just sets state
-            }
-
-            val type = when (mode) {
-                "numeric" -> EncodingType.NUMERIC
-                "alphanumeric" -> EncodingType.ALPHANUMERIC
-                "byte" -> EncodingType.BYTE
-                else -> throw QRDecodingException("Unsupported mode=$mode")
-            }
-
-            val countBits = QRInfo.lengthBits(version, type)
-            var count = toNum(readBits(countBits))
-
-            when (mode) {
-                "numeric" -> {
-                    while (count >= 3) {
-                        val v = toNum(readBits(10))
-                        if (v >= 1000) throw QRDecodingException("numeric(3) = $v")
-                        result.append(v.toString().padStart(3, '0'))
-                        count -= 3
-                    }
-                    if (count == 2) {
-                        val v = toNum(readBits(7))
-                        if (v >= 100) throw QRDecodingException("numeric(2) = $v")
-                        result.append(v.toString().padStart(2, '0'))
-                    } else if (count == 1) {
-                        val v = toNum(readBits(4))
-                        if (v >= 10) throw QRDecodingException("numeric(1) = $v")
-                        result.append(v.toString())
+        while (bitLength - bitIndex >= 4) {
+            when (val mode = read(4)) {
+                0x0 -> break
+                0x7 -> {
+                    val first = read(8)
+                    eci = when {
+                        (first and 0x80) == 0 -> first
+                        (first and 0xC0) == 0x80 -> ((first and 0x3F) shl 8) or read(8)
+                        (first and 0xE0) == 0xC0 -> ((first and 0x1F) shl 16) or read(16)
+                        else -> throw QRDecodingException("Invalid ECI assignment")
                     }
                 }
-
-                "alphanumeric" -> {
-                    while (count >= 2) {
-                        val v = toNum(readBits(11))
-                        val chars = QRInfo.alphanumericEncode(listOf(v / 45, v % 45))
-                        result.append(chars.joinToString(""))
-                        count -= 2
-                    }
-                    if (count == 1) {
-                        val chars = QRInfo.alphanumericEncode(listOf(toNum(readBits(6))))
-                        result.append(chars.joinToString(""))
-                    }
+                0x1 -> appendNumeric(result, read(QRInfo.lengthBits(version, EncodingType.NUMERIC)), ::read)
+                0x2 -> appendAlphanumeric(result, read(QRInfo.lengthBits(version, EncodingType.ALPHANUMERIC)), ::read)
+                0x4 -> {
+                    val count = read(QRInfo.lengthBits(version, EncodingType.BYTE))
+                    val bytes = ByteArray(count) { read(8).toByte() }
+                    result.append(decodeWithEci(bytes, eci))
                 }
-
-                "byte" -> {
-                    val data = ByteArray(count)
-                    for (i in 0 until count) {
-                        data[i] = toNum(readBits(8)).toByte()
-                    }
-                    result.append(decodeWithEci(data, eci))
-                }
+                0x8 -> throw QRDecodingException("Unsupported mode=kanji")
+                else -> throw QRDecodingException(
+                    "Unknown modeBits=${mode.toString(2).padStart(4, '0')} result=\"$result\""
+                )
             }
         }
-
         return result.toString()
+    }
+
+    private fun appendNumeric(result: StringBuilder, count: Int, read: (Int) -> Int) {
+        var left = count
+        while (left >= 3) {
+            val v = read(10)
+            if (v >= 1000) throw QRDecodingException("numeric(3) = $v")
+            result.append(v.toString().padStart(3, '0'))
+            left -= 3
+        }
+        if (left == 2) {
+            val v = read(7)
+            if (v >= 100) throw QRDecodingException("numeric(2) = $v")
+            result.append(v.toString().padStart(2, '0'))
+        } else if (left == 1) {
+            val v = read(4)
+            if (v >= 10) throw QRDecodingException("numeric(1) = $v")
+            result.append(v.toString())
+        }
+    }
+
+    private fun appendAlphanumeric(result: StringBuilder, count: Int, read: (Int) -> Int) {
+        var left = count
+        while (left >= 2) {
+            val v = read(11)
+            if (v >= 45 * 45) throw QRDecodingException("alphanumeric = $v")
+            val chars = QRInfo.alphanumericEncode(listOf(v / 45, v % 45))
+            result.append(chars[0])
+            result.append(chars[1])
+            left -= 2
+        }
+        if (left == 1) {
+            val v = read(6)
+            if (v >= 45) throw QRDecodingException("alphanumeric = $v")
+            result.append(QRInfo.alphanumericEncode(listOf(v))[0])
+        }
     }
 }

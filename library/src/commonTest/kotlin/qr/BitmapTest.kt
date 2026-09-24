@@ -122,6 +122,21 @@ class BitmapTest {
     }
 
     @Test
+    fun negate_inverts_dark_and_treats_unset_as_light() {
+        val bmp = Bitmap(2, 2)
+        bmp.set(0, 0, true)
+        bmp.set(1, 0, false)
+        bmp.negate()
+        assertEquals(false, bmp.get(0, 0))
+        assertEquals(true, bmp.get(1, 0))
+        assertEquals(true, bmp.get(0, 1))
+        bmp.negate()
+        assertEquals(true, bmp.get(0, 0))
+        assertEquals(false, bmp.get(1, 0))
+        assertEquals(false, bmp.get(0, 1))
+    }
+
+    @Test
     fun fromString_parses_modules() {
         val str = """
             X X
