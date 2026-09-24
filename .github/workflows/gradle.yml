@@ -37,13 +37,16 @@ jobs:
           distribution: temurin
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-      - name: Set up Android SDK
+      - name: Point compileSdk 37 at the installed platform
         if: matrix.target == 'testAndroidHostTest'
-        uses: android-actions/setup-android@v3
-        with:
-          # The action default includes the legacy `tools` package, which
-          # sdkmanager no longer ships, so the step fails before Gradle runs.
-          packages: 'platform-tools platforms;android-37 build-tools;36.0.0'
+        run: |
+          # ubuntu-latest already has the SDK. setup-android still requests the
+          # removed `tools` package, and API 37 is published as android-37.0
+          # while AGP looks up android-37.
+          platform="${ANDROID_SDK_ROOT}/platforms"
+          if [ ! -e "$platform/android-37" ] && [ -d "$platform/android-37.0" ]; then
+            sudo ln -s android-37.0 "$platform/android-37"
+          fi
       - uses: actions/cache@v4
         with:
           path: ~/.konan
