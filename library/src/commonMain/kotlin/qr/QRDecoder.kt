@@ -23,7 +23,7 @@ object QRDecoder {
     /**
      * Decode a QR code from an Image.
      *
-     * @param image The image containing the QR code (RGB or RGBA format)
+     * @param image The image containing the QR code (grayscale, RGB, or RGBA)
      * @return The decoded string content
      * @throws QRDecodingException if decoding fails
      */
@@ -68,7 +68,7 @@ object QRDecoder {
      *
      * @param width Image width in pixels
      * @param height Image height in pixels
-     * @param data Raw pixel data in RGB or RGBA format
+     * @param data Raw pixel data in grayscale, RGB, or RGBA format
      * @return The decoded string content
      * @throws QRDecodingException if decoding fails
      */
