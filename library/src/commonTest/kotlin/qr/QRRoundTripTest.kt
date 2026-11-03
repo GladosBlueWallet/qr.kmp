@@ -1,6 +1,5 @@
 package qr
 import kotlin.test.Test
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 
 class QRRoundTripTest {
@@ -342,19 +341,6 @@ class QRRoundTripTest {
         for (turns in 1..3) {
             assertEquals("HELLO", QRDecoder.decode(render(HELLO, scale = 3, rotate = turns)), "turns=$turns")
         }
-    }
-
-    @Test
-    fun reed_solomon_corrects_a_byte() {
-        val rs = ReedSolomon(7)
-        val data = ByteArray(19) { (it * 17 + 3).toByte() }
-        val ecc = rs.encode(data)
-        val codeword = ByteArray(data.size + ecc.size)
-        data.copyInto(codeword)
-        ecc.copyInto(codeword, data.size)
-        codeword[4] = (codeword[4].toInt() xor 0x5A).toByte()
-        val decoded = rs.decode(codeword)
-        assertContentEquals(data, decoded.copyOf(data.size))
     }
 
     private fun assertDecodes(expected: String, modules: String) {

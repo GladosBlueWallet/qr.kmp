@@ -234,8 +234,9 @@ object BitDecoder {
                     result.append(decodeWithEci(bytes, eci))
                 }
                 0x8 -> throw QRDecodingException("Unsupported mode=kanji")
+                // Keep decoded text out of the message: it can be a key or seed.
                 else -> throw QRDecodingException(
-                    "Unknown modeBits=${mode.toString(2).padStart(4, '0')} result=\"$result\""
+                    "Unknown modeBits=${mode.toString(2).padStart(4, '0')} at bit=${bitIndex - 4}"
                 )
             }
         }

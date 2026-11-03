@@ -237,7 +237,7 @@ object GaloisField {
             t = addPoly(q, tLastLast)
 
             if (degree(r) >= degree(rLast)) {
-                throw QRDecodingException("Division failed r: ${r.toList()}, rLast: ${rLast.toList()}")
+                throw QRDecodingException("Division failed: degree(r)=${degree(r)}, degree(rLast)=${degree(rLast)}")
             }
         }
 

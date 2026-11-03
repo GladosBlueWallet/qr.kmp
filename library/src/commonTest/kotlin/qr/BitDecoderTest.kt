@@ -3,6 +3,8 @@ package qr
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class BitDecoderTest {
 
@@ -33,5 +35,25 @@ class BitDecoderTest {
         assertFailsWith<QRDecodingException> {
             BitDecoder.decodeCodewords(byteArrayOf(0x7F, 0xF0.toByte(), 0, 0), 1)
         }
+    }
+
+    @Test
+    fun unknown_mode_error_does_not_echo_decoded_payload() {
+        // version 1: byte segment "SECRET", then reserved mode 0011.
+        val payload = "SECRET"
+        val bits = StringBuilder()
+        fun put(value: Int, n: Int) = bits.append(value.toString(2).padStart(n, '0'))
+        put(0x4, 4)
+        put(payload.length, 8)
+        payload.forEach { put(it.code, 8) }
+        put(0x3, 4)
+        while (bits.length % 8 != 0) bits.append('0')
+        val data = ByteArray(bits.length / 8) { bits.substring(it * 8, it * 8 + 8).toInt(2).toByte() }
+
+        val e = assertFailsWith<QRDecodingException> { BitDecoder.decodeCodewords(data, 1) }
+        val message = e.message.orEmpty()
+        assertFalse(message.contains(payload), message)
+        assertTrue(message.contains("modeBits=0011"), message)
+        assertTrue(message.contains("bit=${4 + 8 + payload.length * 8}"), message)
     }
 }
